@@ -1,0 +1,258 @@
+---
+title: "CTPC_code"
+author: "Siyuan Cheng"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    fig_height: 7
+---
+
+```{r}
+# Download H660 data 
+# data1 is GSE183199 has 3 H660 RNA-seq data "FPKM"
+library(ggplot2)
+setwd("/Users/siyuan/Library/CloudStorage/OneDrive-LSUHealthShreveport/Siyuan/shinyPro paper/R data/Rdata(R workspace)")
+data1=read.csv("GSE183199_CellLines_RNAseq_FPKM_Data.csv")
+index=duplicated(data1$gene_id)
+data1=data1[!index,]
+rownames(data1)=data1$gene_id
+data1=data1[,-1]
+# data2 is GSE182407 H660 RNA-seq data is has counts and FPKM, we will choose Count
+data2_1=read.table("GSM5528452_H660_E_1_processed_data.txt")
+data2_2=read.table("GSM5528453_H660_E_2_processed_data.txt")
+data2_3=read.table("GSM5528454_H660_E_3_processed_data.txt")
+data2_4=read.table("GSM5528455_H660_Y_1_processed_data.txt")
+data2_5=read.table("GSM5528456_H660_Y_2_processed_data.txt")
+data2_6=read.table("GSM5528457_H660_Y_3_processed_data.txt")
+data2=cbind(data2_1$V2,data2_1$V5,data2_2$V5,data2_3$V5,data2_4$V5,data2_5$V5,data2_6$V5)
+colnames(data2)=data2[1,]
+data2=as.data.frame(data2)
+data2=data2[-1,]
+rownames(data2)=data2$Gene_symbol
+colnames(data2)=c("Gene","GSM5528452","GSM5528453","GSM5528454","GSM5528455","GSM5528456","GSM5528457")
+data2=data2[,-1]
+rm(data2_1,data2_2,data2_3,data2_4,data2_5,data2_6)
+#data3 is GSE154575 has 2 H660 in "FPKM"
+library(GEOquery)
+data3=read.csv("GSE154575.csv")
+index=duplicated(data3$gene_name)
+data3=data3[!index,]
+rownames(data3)=data3$gene_name
+data3=data3[,-c(1:7)]
+colnames(data3)=c("GSM4674830","GSM4674831")
+# data4 is GSE98069 has 2 H660 in "Count"
+data4_1=read.table("GSM2586691_NCI_H660_0_counts.txt",header = T)
+data4_2=read.table("GSM2586692_NCI_H660_05_counts.txt",header = T)
+data4=cbind(data4_1$gene_name,data4_1$NCI_H660_0,data4_2$NCI_H660_05)
+rm(data4_1,data4_2)
+data4=as.data.frame(data4)
+colnames(data4)=c("Gene","GSM2586691","GSM2586692")
+index=duplicated(data4$Gene)
+data4=data4[!index,]
+rownames(data4)=data4$Gene
+data4=data4[,-1]
+# data5 is GSE118206 has 1 H660 sample in "Count"
+data5=read.csv("rsem.genes.raw_counts.csv")
+colnames(data5)=c("Gene","GSM3321044")
+index=duplicated(data5$Gene)
+data5=data5[!index,]
+tem=data5$Gene
+data5=as.data.frame(data5[,2])
+colnames(data5)="GSM3321044"
+rownames(data5)=tem
+# data6 is CCLE gene count it has only 1 H660 but others could also be input,data is "Count"
+data6=read.csv("CCLE_RNAseq_reads.csv")
+data6=as.data.frame(t(data6))
+sample=read.csv("sample_info.csv")
+index=grep("PROSTATE",sample$CCLE_Name)
+sample=sample[index,]
+sample=sample[c(7:12),]
+colnames(data6)=data6[1,]
+data6=data6[-1,]
+index=duplicated(rownames(data6))
+data6=data6[!index,]
+data6$Gene=gsub("\\..*","",rownames(data6))
+index=duplicated(data6$Gene)
+data6=data6[!index,]
+rownames(data6)=data6$Gene
+data6=data6[,intersect(colnames(data6),sample$DepMap_ID)]
+# Retrive ARCHS4 samples gene count data
+meta=read.csv("Annotiation for ARCHS4.csv")  # this annotiation data is for cleaned, annotiated ARCHS4 samples
+meta$group[grep("LNCaP95",meta$Treatment)]="LNCaP95/abl"
+meta$group[grep("LNCaP_abl",meta$Treatment)]="LNCaP95/abl"
+write.csv(meta,"Annotiation for ARCHS4 add LNCaP95abl.csv") # This is the annotiation file separated the LNCaP95 and LNCaPabl into new group
+meta=read.csv("Annotiation for ARCHS4 add LNCaP95abl.csv")
+library("rhdf5")    # can be installed using Bioconductor
+library("preprocessCore")
+library("sva")
+# "human_matrix_v11.h5" was downloaded and saved in the work direction
+samp=meta$X
+destination_file = "human_matrix_v11.h5"
+samples = h5read(destination_file, "meta/samples/geo_accession")
+genes = h5read(destination_file, "meta/genes/genes")
+series=h5read(destination_file, "meta/samples/series_id")
+sample_locations = which(samples %in% samp)
+series=series[sample_locations]
+expression = t(h5read(destination_file, "data/expression", index=list(sample_locations, 1:length(genes))))
+H5close()
+rownames(expression) = genes
+colnames(expression) = samples[sample_locations]
+expression=as.data.frame(expression)
+rownames(meta)=meta$X
+meta=meta[,-1]
+meta=meta[colnames(expression),]
+#data4-6 are gene count format
+# Combine ARCHS4 data with data 4-6
+# But they should have same genes
+gene=intersect(intersect(intersect(intersect(intersect(intersect(rownames(data1),rownames(data2)),rownames(data3)),rownames(data4)),rownames(data5)),rownames(data6)),rownames(expression))
+#Now assemble all datasets in the same order of genes
+data1=data1[gene,]
+data2=data2[gene,]
+data3=data3[gene,]
+data4=data4[gene,]
+data5=data5[gene,]
+data5=as.data.frame(data5)
+colnames(data5)="GSM3321044"
+rownames(data5)=gene
+data6=data6[gene,]
+expression=expression[gene,]
+#now combine all read count datasets 
+#data2 and data4-6 are gene count format
+count=cbind(expression,data4,data5,data6,data2)
+# Reload the meta data for all datasets collected 
+meta=read.csv("Meta data for all cell lines.csv")
+meta$group[grep("LNCaP95",meta$Treatment)]="LNCaP95"
+meta$group[grep("LNCaP_abl",meta$Treatment)]="LNCaP-abl"
+meta$group[grep("LNCaP-abl",meta$Treatment)]="LNCaP-abl"
+meta$group[grep("C42",meta$group)]="C4-2"
+write.csv(meta,"Meta data for all cell lines add LNCaP95abl.csv") # This is the annotiation file separated the LNCaP95 and LNCaPabl into new group
+meta=read.csv("Meta data for all cell lines add LNCaP95abl.csv")
+rownames(meta)=meta$ID
+# subset meta data with only datasets in gene counts
+meta_count=meta[colnames(count),]
+table(meta$group)
+# Now convert gene counts to FPKM
+# First step is obatin gene length
+library("biomaRt")
+listMarts()
+mart=useMart('ensembl')
+mart=useMart(biomart="ensembl", dataset="hsapiens_gene_ensembl")
+gene_info=getBM(attributes = c("hgnc_symbol","start_position","end_position","transcript_length"),filters = "hgnc_symbol",values = rownames(count),mart = mart)
+length=aggregate(transcript_length~hgnc_symbol,gene_info,max)
+rownames(length)=length$hgnc_symbol
+length=length[rownames(count),]
+length=na.omit(length)
+library(DESeq2)
+matrix=apply(count,2,as.numeric)
+matrix=apply(matrix,2,as.integer)
+rownames(matrix)=rownames(count)
+matrix=matrix[intersect(rownames(length),rownames(matrix)),]
+length=length[rownames(matrix),]
+dds=DESeqDataSetFromMatrix(countData =matrix,colData = meta_count,design = ~group)
+dds=estimateSizeFactors(dds)
+mcols(dds)$basepairs=length$transcript_length
+fpkm=fpkm(dds)
+# Rebecca data has 1 H660 sample in log2 FPKM, this is loaded as data7
+data7=read.csv("Rebecca data(log2FPKM).csv")
+data7=na.omit(data7)
+index=duplicated(data7$gene_symbol)
+data7=data7[!index,]
+rownames(data7)=data7$gene_symbol
+data7=data7[,-1]
+data7=2^data7-1
+# Now combind the FPKM matrix with the data from FPKM value ()
+data1=data1[rownames(fpkm),]
+data3=data3[rownames(fpkm),]
+data7=data7[rownames(fpkm),]
+all=cbind(fpkm,data1,data3,data7)
+meta_all=meta[colnames(all),]
+all_matrix=apply(all,2,as.numeric)
+rownames(all_matrix)=rownames(all)
+colnames(all_matrix)=colnames(all)
+all_matrix=na.omit(all_matrix)
+# Batch effect removal
+# The different batch effect removal has beed tried, but the batch effect removal will also remove the different from treatments/ cell lines
+# The batch effect didn't cover the cell line identity, showed in PCA
+all_corrected=log2(all_matrix+1)
+all_corrected = normalize.quantiles(all_corrected)
+#   all_corrected=ComBat(dat=all_corrected, batch=meta_all$Batch, par.prior=TRUE, prior.plots=FALSE)   # it seems without batch effect remover, the data still looks good
+rownames(all_corrected)=rownames(all_matrix)
+colnames(all_corrected)=colnames(all_matrix)
+write.csv(all_corrected,"PCa cell line FPKM normalized.csv")
+# PCA Visulization
+pca=prcomp(t(all_corrected),center = T)
+library(ggfortify)
+autoplot(pca,data = meta_all,colour="group")+theme_classic()
+# UMAP visulization
+#llibrary(Seurat)
+#cell_line=CreateSeuratObject(counts = all_corrected,meta.data = meta_all)
+#cell_line <- FindVariableFeatures(cell_line, selection.method = "vst", nfeatures = 2000)
+#cell_line <- ScaleData(cell_line, features = rownames(all_corrected))
+#cell_line <- RunPCA(cell_line, features = VariableFeatures(object = cell_line))
+#DimPlot(cell_line, reduction = "pca",group.by = "group",label = T,repel = T)
+#ElbowPlot(cell_line)
+#cell_line <- RunUMAP(cell_line, dims = 1:50)
+#Idents(cell_line)=cell_line$group
+#DimPlot(cell_line, reduction = "umap",group.by = "group")
+#plot <- DimPlot(cell_line, reduction = "umap",group.by = "group",label = T,repel = T,label.color = "black")
+#HoverLocator(plot = plot, information = FetchData(cell_line, vars = c("group", "Treatment","Batch","Resource")))
+# Generate boxplot
+library("preprocessCore")
+bp=as.data.frame(all_corrected)
+bp=as.data.frame(t(bp))
+bp$ID=rownames(bp)
+bp=merge(bp,meta_all,by="ID")
+bp$group=factor(bp$group,levels = c("VCaP","LNCaP","C42","LNCaP95","LNCaP-abl","22RV1","PC3","DU145","H660"))
+saveRDS(bp,"input.rds")
+library(plotly)
+library(tidyverse)
+library(htmlwidgets)
+boxp=ggplot(bp,aes(x=group,group=group,y=HOXB13,color=group,cell=group,batch=Batch,id=ID,treatment=Treatment))+geom_violin(scale = "width")+geom_jitter(alpha=0.3)
+ggplotly(boxp,tooltip = c("ID","Batch","cell","treatment"))
+boxp=ggplot(bp,aes(x=group,group=group,y=HOXB13,color=group,cell=group,batch=Batch,id=ID,treatment=Treatment))+geom_boxplot(outlier.size = 0)+geom_jitter(alpha=0.2)
+ggplotly(boxp,tooltip = c("ID","Batch","cell","treatment"))
+
+p <- plotly_build(boxp)
+
+p$x$data <- lapply(p$x$data, FUN = function(x){
+  
+  if (x$type == "box") {
+    x$marker = list(opacity = 0)
+  }
+  return(x)
+})
+
+p
+
+raw=readRDS("input.rds")
+library(reshape2)
+data=melt(raw,id=c("ID","group","Treatment","Measurement","Batch","Data_type","Resource"))
+library(ggplot2)
+tiff("Normalization on Batch.tiff",width = 25,height = 25,units = "cm",res = 600)
+ggplot(data,aes(x=Batch,y=value,fill=Batch))+geom_boxplot(outlier.shape = NA)+guides(fill=F)+theme(axis.text.x = element_blank())+
+  scale_y_continuous(limits = c(-0.5,6))+coord_polar()+theme(panel.grid = element_blank())+theme_void()
+dev.off()
+
+
+tiff("Normalization on ID.tiff",width = 200,height = 200,units = "cm",res = 300)
+ggplot(data,aes(x=ID,y=value,fill=ID))+geom_boxplot(outlier.shape = NA)+guides(fill=F)+theme(axis.text.x = element_blank())+
+  scale_y_continuous(limits = c(-0.5,6))+coord_polar()+theme(panel.grid = element_blank())+theme_void()
+dev.off()
+
+
+tiff("Normalization on group.tiff",width = 25,height = 25,units = "cm",res = 600)
+ggplot(data,aes(x=group,y=value,fill=group))+geom_boxplot(outlier.shape = NA)+theme(axis.text.x = element_blank())+
+  scale_y_continuous(limits = c(-0.5,6))+coord_polar()+theme(panel.grid = element_blank())+theme_void()
+dev.off()
+
+
+
+
+
+
+
+
+
+
+```
+
